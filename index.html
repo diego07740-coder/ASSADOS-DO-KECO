@@ -917,7 +917,9 @@ $("#rawbt-btns").addEventListener("click",async e=>{const b=e.target.closest("[d
   const nome=`comanda-${v.num||"pedido"}${so===0?"-caixa":so===1?"-motoboy":""}.png`;
   try{await dl.save({filename:nome,data:blob});b.textContent="✓ "+b.textContent.replace(/^✓ /,"");b.classList.remove("primary");toast("Abra pela notificação e escolha RawBT")}
   catch(err){if(!err||err.code!=="declined")toast("Não deu para baixar a comanda")}});
-function rasterEscPos(cv){const w=cv.width,h=cv.height,bw=Math.ceil(w/8),px=cv.getContext("2d").getImageData(0,0,w,h).data,out=[27,64],CH=128;
+function rasterEscPos(cv){const w=cv.width,h=cv.height,bw=Math.ceil(w/8),px=cv.getContext("2d").getImageData(0,0,w,h).data,out=[],CH=24;
+  /* folga no começo: a impressora pode perder os primeiros bytes enquanto o Bluetooth conecta; ESC @ repetido não imprime nada */
+  for(let i=0;i<800;i++)out.push(27,64);
   /* imagem inteira em blocos, igual à versão que imprimiu o logo certo; depois uma faixa em branco de folga */
   const PAD=320,T=h+PAD;
   for(let y0=0;y0<T;y0+=CH){const hh=Math.min(CH,T-y0);out.push(29,118,48,0,bw&255,bw>>8,hh&255,hh>>8);
