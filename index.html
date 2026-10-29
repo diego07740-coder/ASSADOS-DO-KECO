@@ -917,10 +917,18 @@ $("#rawbt-btns").addEventListener("click",async e=>{const b=e.target.closest("[d
   const nome=`comanda-${v.num||"pedido"}${so===0?"-caixa":so===1?"-motoboy":""}.png`;
   try{await dl.save({filename:nome,data:blob});b.textContent="✓ "+b.textContent.replace(/^✓ /,"");b.classList.remove("primary");toast("Abra pela notificação e escolha RawBT")}
   catch(err){if(!err||err.code!=="declined")toast("Não deu para baixar a comanda")}});
-function rasterEscPos(cv){const w=cv.width,h=cv.height,bw=Math.ceil(w/8),px=cv.getContext("2d").getImageData(0,0,w,h).data,out=[27,64],CH=128;
-  for(let y0=0;y0<h;y0+=CH){const hh=Math.min(CH,h-y0);out.push(29,118,48,0,bw&255,bw>>8,hh&255,hh>>8);
-    for(let y=y0;y<y0+hh;y++)for(let bx=0;bx<bw;bx++){let b=0;for(let bit=0;bit<8;bit++){const x=bx*8+bit;if(x<w){const i=(y*w+x)*4;if(px[i+3]>127&&px[i]*.299+px[i+1]*.587+px[i+2]*.114<128)b|=128>>bit}}out.push(b)}}
-  out.push(10,10,10,10);return new Uint8Array(out)}
+function rasterEscPos(cv){const w=cv.width,h=cv.height,bw=Math.ceil(w/8),px=cv.getContext("2d").getImageData(0,0,w,h).data,out=[27,64];
+  const row=y=>{const r=new Uint8Array(bw);let any=false;for(let bx=0;bx<bw;bx++){let b=0;for(let bit=0;bit<8;bit++){const x=bx*8+bit;if(x<w){const i=(y*w+x)*4;if(px[i+3]>127&&px[i]*.299+px[i+1]*.587+px[i+2]*.114<128)b|=128>>bit}}r[bx]=b;if(b)any=true}return any?r:null};
+  /* linhas em branco viram "avançar papel" (ESC J); só o que tem tinta vai como imagem */
+  let y=0;const rows=[];for(let i=0;i<h;i++)rows.push(row(i));
+  let last=h-1;while(last>0&&!rows[last])last--;
+  while(y<=last){
+    if(!rows[y]){let n=0;while(y<=last&&!rows[y]){n++;y++}while(n>0){const k=Math.min(255,n);out.push(27,74,k);n-=k}continue}
+    let y2=y;while(y2<=last&&rows[y2]&&y2-y<48)y2++;const hh=y2-y;
+    out.push(29,118,48,0,bw&255,bw>>8,hh&255,hh>>8);for(let i=y;i<y2;i++)for(const b of rows[i])out.push(b);y=y2}
+  out.push(27,74,200,10,10,10,10);
+  for(let i=0;i<4096;i++)out.push(0);
+  return new Uint8Array(out)}
 function b64(u8){let s="";for(let i=0;i<u8.length;i+=32768)s+=String.fromCharCode.apply(null,u8.subarray(i,i+32768));return btoa(s)}
 function enviarRawBT(v){const cv=desenharComanda(v,null);
   location.href="intent:base64,"+b64(rasterEscPos(cv))+"#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;";
