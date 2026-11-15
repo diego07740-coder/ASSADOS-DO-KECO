@@ -411,9 +411,10 @@ a.btnlink.alt{background:transparent;color:var(--good)}
       <button type="button" data-pay="cartao" aria-pressed="false">Cartão</button>
     </div>
     <div class="grid2" id="g-pag" hidden>
-      <label for="venda-pago">Situação<select id="venda-pago"><option value="nao">Paga na entrega</option><option value="sim">Já está pago</option></select></label>
+      <label for="venda-pago">Situação<select id="venda-pago"><option value="">Escolha…</option><option value="nao">Paga na entrega</option><option value="sim">Já está pago</option></select></label>
       <label for="venda-troco" id="lbl-troco">Troco para (R$)<input id="venda-troco" inputmode="decimal" placeholder="Ex.: 100"></label>
     </div>
+    <label class="checkline" for="venda-semtroco" id="lbl-semtroco"><input type="checkbox" id="venda-semtroco"> Não precisa de troco (cliente tem o valor certo)</label>
   </div>
   <div class="row between"><div><div class="muted small">Total</div><div class="total num" id="sheet-total">R$ 0,00</div></div><button class="primary big" id="btn-vender" type="button" disabled>Confirmar venda</button></div>
 </div>
@@ -498,6 +499,17 @@ a.btnlink.alt{background:transparent;color:var(--good)}
     <p class="muted small">Óleo, gás da frangueira e outros insumos entram no custo de preparo do próximo domingo (dividido, se durar mais de um). Metade do óleo e o gás em lata já estão no custo da panceta. Carnes, temperos, ingredientes da farofa/batata e embalagens já contam direto em cada peça. Energia e água entram nas contas do mês. O motoboy é calculado sozinho.</p>
     <div class="row between"><button type="button" class="danger" id="desp-del" hidden>Excluir</button><button class="primary big" type="submit" id="desp-submit">Lançar despesa</button></div>
   </form>
+</div>
+
+<!-- SHEET: lembrete de troco -->
+<div class="sheet" id="sh-troco" hidden role="dialog" aria-label="Separar troco">
+  <div style="text-align:center;display:flex;flex-direction:column;gap:10px;padding-block:8px">
+    <span class="lbl-cap">Pedido <span id="tr-num"></span></span>
+    <h2 id="tr-tit">Separe o troco</h2>
+    <div class="total num" id="tr-val" style="font-size:2.6rem;color:var(--accent)"></div>
+    <p class="muted" id="tr-sub"></p>
+  </div>
+  <button type="button" class="primary big" data-close>Já separei o troco</button>
 </div>
 
 <!-- SHEET: imprimir no celular (RawBT) -->
@@ -702,12 +714,16 @@ function renderCheckout(){
   const ent=S.tipo==="entrega",ret=S.tipo==="balcao",retCmd=ret&&retiraPreenchida(),cmd=ent||retCmd;
   $$("#tipo button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.tipo===S.tipo)));
   $$("#pay button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.pay===S.pay)));
-  $("#g-cliente").hidden=!ent;$("#g-retira").hidden=!ret;$("#venda-pago").options[0].textContent=ent?"Paga na entrega":"Paga na retirada";$("#g-entrega").hidden=!ent;$("#g-avulso").hidden=!!$("#venda-cliente").value;$("#g-pag").hidden=!cmd;
-  $("#lbl-troco").hidden=!(cmd&&S.pay==="dinheiro"&&$("#venda-pago").value==="nao");
+  $("#g-cliente").hidden=!ent;$("#g-retira").hidden=!ret;$("#venda-pago").options[1].textContent=ent?"Paga na entrega":"Paga na retirada";$("#g-entrega").hidden=!ent;$("#g-avulso").hidden=!!$("#venda-cliente").value;$("#g-pag").hidden=!cmd;
+  const precisaTroco=cmd&&S.pay==="dinheiro"&&$("#venda-pago").value==="nao";
+  $("#lbl-troco").hidden=!precisaTroco;$("#lbl-semtroco").hidden=!precisaTroco;
+  const semTroco=$("#venda-semtroco").checked;if(semTroco)$("#venda-troco").value="";$("#venda-troco").disabled=semTroco;
   const total=cartSub()+(ent?parseNum($("#venda-taxa").value):0);
   $("#sheet-total").textContent=money(total);
-  $("#btn-vender").disabled=!cartItems().length||!S.pay||faltaAc;
-  $("#btn-vender").textContent=faltaAc?"Escolha o acompanhamento":!S.pay?"Escolha o pagamento":cmd?"Abrir comanda":"Confirmar venda";
+  const faltaSit=cmd&&!!S.pay&&!$("#venda-pago").value;
+  const trV=parseNum($("#venda-troco").value),faltaTroco=precisaTroco&&!semTroco&&!(trV>=total);
+  $("#btn-vender").disabled=!cartItems().length||!S.pay||faltaAc||faltaSit||faltaTroco;
+  $("#btn-vender").textContent=faltaAc?"Escolha o acompanhamento":!S.pay?"Escolha o pagamento":faltaSit?"Já está pago ou paga na entrega?":faltaTroco?(trV>0?"Troco menor que o total":"Informe o troco"):cmd?"Abrir comanda":"Confirmar venda";
 }
 $("#acomp-box").addEventListener("click",e=>{const i=e.target.closest("[data-ainc]"),d=e.target.closest("[data-adec]");if(!i&&!d)return;const id=(i||d).dataset.ainc||(i||d).dataset.adec;
   const nP=cartItems().filter(x=>!x.p.semAcomp).reduce((s,x)=>s+x.q,0),tot=Object.values(S.acomp).reduce((a,b)=>a+b,0);
@@ -728,13 +744,18 @@ function acharCliente(tel,nome){const t=soDig(tel),n=String(nome||"").trim().toL
   const c=id==="#venda-tel"?(soDig($("#venda-tel").value).length>=8?acharCliente($("#venda-tel").value,""):null):acharCliente("",$("#venda-nome").value);
   if(!c)return;$("#venda-cliente").value=c.id;if(c.end&&!$("#venda-end").value)$("#venda-end").value=c.end;toast("Cliente encontrado: "+c.nome);renderCheckout()}));
 $("#venda-cliente").addEventListener("change",()=>{const c=S.clientes.find(x=>x.id===$("#venda-cliente").value);if(c&&c.end)$("#venda-end").value=c.end;renderCheckout()});
-["#venda-taxa","#venda-pago","#venda-rcli","#venda-quem","#venda-rhora"].forEach(id=>$(id).addEventListener("input",renderCheckout));
+["#venda-taxa","#venda-pago","#venda-rcli","#venda-quem","#venda-rhora","#venda-troco","#venda-semtroco"].forEach(id=>{$(id).addEventListener("input",renderCheckout);$(id).addEventListener("change",renderCheckout)});
+function avisoTroco(v){const t=v.troco-v.total;
+  $("#tr-num").textContent=v.num?"#"+v.num:"";$("#tr-tit").textContent=v.tipo==="entrega"?"Separe o troco pro motoboy":"Separe o troco pra retirada";
+  $("#tr-val").textContent=money(t);$("#tr-sub").textContent=`Cliente paga ${money(v.total)} com ${money(v.troco)}${v.clienteNome?" · "+v.clienteNome:""}`;
+  setTimeout(()=>openSheet("sh-troco"),350)}
 function retiraPreenchida(){return !!($("#venda-rcli").value.trim()||$("#venda-quem").value.trim()||$("#venda-rhora").value)}
-function resetPedido(){S.cart={};S.acomp={};S.pay=null;S.tipo="balcao";["#venda-cliente","#venda-nome","#venda-tel","#venda-hora","#venda-end","#venda-taxa","#venda-obs","#venda-troco","#venda-dia","#venda-rcli","#venda-quem","#venda-rhora"].forEach(id=>$(id).value="");$("#venda-pago").value="nao";renderCart()}
+function resetPedido(){S.cart={};S.acomp={};S.pay=null;S.tipo="balcao";["#venda-cliente","#venda-nome","#venda-tel","#venda-hora","#venda-end","#venda-taxa","#venda-obs","#venda-troco","#venda-dia","#venda-rcli","#venda-quem","#venda-rhora"].forEach(id=>$(id).value="");$("#venda-pago").value="";$("#venda-semtroco").checked=false;renderCart()}
 $("#btn-vender").addEventListener("click",async()=>{
   if(!need())return;const items=cartItems();if(!items.length||!S.pay)return;
   {const nP=items.filter(x=>!x.p.semAcomp).reduce((s,x)=>s+x.q,0),tot=Object.values(S.acomp).reduce((a,b)=>a+b,0);
    if(acomps().length&&nP>0&&tot<nP){toast("Escolha o acompanhamento de todas as peças.");return}}
+  if($("#btn-vender").disabled)return;
   const rc=$("#venda-rcli").value.trim(),rq=$("#venda-quem").value.trim(),rh=$("#venda-rhora").value;
   const tipo=S.tipo==="balcao"&&(rc||rq||rh)?"retirada":S.tipo,ret=tipo==="retirada";
   const cid=ret?"":$("#venda-cliente").value,cli=S.clientes.find(c=>c.id===cid);
@@ -761,8 +782,9 @@ $("#btn-vender").addEventListener("click",async()=>{
     troco:tipo!=="balcao"&&S.pay==="dinheiro"?parseNum($("#venda-troco").value)||null:null,
     clienteId:cliId,clienteNome:nome||null,retiraNome:ret&&rq?rq:null,tel:tel||null,endereco:tipo==="entrega"?$("#venda-end").value.trim():null,agendadoPara:agendado,obs:$("#venda-obs").value.trim()||null,
     num:nextNum(),cobrarNaEntrega:tipo==="entrega"&&$("#venda-pago").value!=="sim"};
-  try{await S.db.collection("vendas").add(doc);closeSheet();resetPedido();toast(tipo==="balcao"?"Venda registrada: "+money(total):"Comanda aberta para "+(nome||rq||"retirada"));
-    if(tipo==="entrega"?S.cfg.autoPrint:S.cfg.printRetirada)setTimeout(()=>printVenda(doc),300)}
+  try{await S.db.collection("vendas").add(doc);closeSheet();resetPedido();const vaiTroco=!doc.pago&&doc.pagamento==="dinheiro"&&doc.troco>doc.total;if(!vaiTroco)toast(tipo==="balcao"?"Venda registrada: "+money(total):"Comanda aberta para "+(nome||rq||"retirada"));
+    if(tipo==="entrega"?S.cfg.autoPrint:S.cfg.printRetirada)setTimeout(()=>printVenda(doc),300);
+    if(!doc.pago&&doc.pagamento==="dinheiro"&&doc.troco>doc.total)avisoTroco(doc)}
   catch(e){fail(e);btn.disabled=false}
 });
 
@@ -858,6 +880,30 @@ function escposVenda(v){
 }
 /* comanda desenhada como imagem no tamanho do papel (384 pontos = 58mm, 576 = 80mm) */
 const LOGO=new Image();LOGO.src="data:image/png;base64,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";
+/* frase do pedido: sorteada, mas sempre a mesma pro mesmo pedido (reimpressão sai igual) */
+const FRASES=[
+ "Você é muito importante pra nós. Que cada amanhã seja sempre o seu melhor dia.",
+ "Obrigado por estar com a gente. Que sua semana venha leve e cheia de coisas boas.",
+ "Cada pedido seu é um motivo pra gente fazer melhor. Obrigado!",
+ "Que esse assado aqueça o seu dia, e que os próximos sejam ainda melhores.",
+ "Você faz parte da nossa história. Muito obrigado pela preferência!",
+ "Que nunca falte motivo pra sorrir na sua semana.",
+ "Feito com carinho pra você. Bom apetite!",
+ "O melhor da sua semana ainda está por vir. Acredite!",
+ "Seu domingo merece sabor de coisa boa. Aproveite!",
+ "Obrigado pela confiança. Ela é o que nos move.",
+ "Que hoje seja um dia de descanso, e amanhã um dia de conquistas.",
+ "Cuide de você. Você é importante, pra nós e pra muita gente.",
+ "Que a semana que começa traga boas notícias pra você.",
+ "Pequenos momentos bons fazem um dia inteiro valer a pena.",
+ "Você escolheu a gente, e a gente agradece de coração.",
+ "Que o seu esforço seja recompensado em dobro nesta semana.",
+ "Um bom almoço, um bom descanso e uma ótima semana pra você!",
+ "Toda semana é uma chance nova de fazer dar certo. Vai com tudo!",
+ "Gostou? Indique pra alguém. É assim que a gente cresce.",
+ "Bom apetite! Que hoje você se permita descansar sem culpa."
+];
+function fraseDoPedido(v){const s=String(v.num||0)+"-"+String(v.pedidoEm||v.ts||0);let n=0;for(const c of s)n=(n*31+c.charCodeAt(0))>>>0;return FRASES[n%FRASES.length]}
 function desenharComanda(v,so){
   const W=String(S.cfg.papel)==="58"?384:576,k=W/384,P=Math.round(10*k),IW=W-2*P;
   const c=document.createElement("canvas");c.width=W;c.height=8000;
@@ -905,7 +951,9 @@ function desenharComanda(v,so){
     if(v.pago)caixa(()=>center("PAGO · "+(PAG[v.pagamento]||""),26,true),true);
     else{caixa(()=>{center("COBRAR "+money(v.total),28,true);center(PAG[v.pagamento]||"",22,true)},false);
       if(v.pagamento==="dinheiro"&&v.troco>v.total){center("Levar troco: "+money(v.troco-v.total),25,true);center("(cliente paga com "+money(v.troco)+")",18,false)}}
-    if(via==="VIA MOTOBOY"&&v.endereco){gap(14);if(qr("https://maps.google.com/?q="+encodeURIComponent(semAcento(v.endereco+((S.cfg.cidade||"").trim()?", "+S.cfg.cidade.trim():""))),300)){gap(6);center("Aponte a câmera para abrir a rota",17,false)}}
+    if(via!=="VIA CONFERÊNCIA DO CAIXA"){gap(22);for(let i=W*0.3;i<W*0.7;i+=8*k)x.fillRect(i,y,4*k,2*k);gap(16);
+      x.save();const lh=F(20,false);x.font=`italic ${Math.round(20*k)}px Arial, Helvetica, sans-serif`;
+      wrap(fraseDoPedido(v),IW-30*k).forEach(l=>{x.fillText(l,(W-x.measureText(l).width)/2,y);y+=lh});x.restore()}
   });
   gap(40);
   const o=document.createElement("canvas");o.width=W;o.height=Math.ceil(y);o.getContext("2d").drawImage(c,0,0);return o;
