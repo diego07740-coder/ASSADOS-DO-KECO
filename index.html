@@ -696,8 +696,9 @@ function renderCheckout(){
   $("#cart-sheet").innerHTML=cartHTML();
   const ac=acomps(),nP=cartItems().filter(x=>!x.p.semAcomp).reduce((s,x)=>s+x.q,0),esc_=Object.values(S.acomp).reduce((a,b)=>a+b,0);
   $("#g-acomp").hidden=!ac.length||!nP;
-  if(ac.length){$("#acomp-box").innerHTML=ac.map(a=>{const q=S.acomp[a.id]||0;return `<div class="acline"><b>${esc(a.nome)}</b><div class="qty"><button type="button" class="icon" data-adec="${a.id}" aria-label="Menos">−</button><span class="num">${q}</span><button type="button" class="icon" data-ainc="${a.id}" aria-label="Mais">+</button></div></div>`}).join("");
-    $("#acomp-falta").innerHTML=esc_>=nP?'<span class="chip good">ok</span>':`<span class="chip warn">falta escolher ${nP-esc_}</span>`}
+  if(ac.length){$("#acomp-box").innerHTML=[...ac,{id:"_sem",nome:"Sem acompanhamento"}].map(a=>{const q=S.acomp[a.id]||0;return `<div class="acline"><b>${esc(a.nome)}</b><div class="qty"><button type="button" class="icon" data-adec="${a.id}" aria-label="Menos">−</button><span class="num">${q}</span><button type="button" class="icon" data-ainc="${a.id}" aria-label="Mais">+</button></div></div>`}).join("");
+    $("#acomp-falta").innerHTML=esc_>=nP?'<span class="chip good">ok</span>':`<span class="chip bad">falta escolher ${nP-esc_}</span>`}
+  const faltaAc=ac.length&&nP>0&&esc_<nP;
   const ent=S.tipo==="entrega",ret=S.tipo==="balcao",retCmd=ret&&retiraPreenchida(),cmd=ent||retCmd;
   $$("#tipo button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.tipo===S.tipo)));
   $$("#pay button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.pay===S.pay)));
@@ -705,8 +706,8 @@ function renderCheckout(){
   $("#lbl-troco").hidden=!(cmd&&S.pay==="dinheiro"&&$("#venda-pago").value==="nao");
   const total=cartSub()+(ent?parseNum($("#venda-taxa").value):0);
   $("#sheet-total").textContent=money(total);
-  $("#btn-vender").disabled=!cartItems().length||!S.pay;
-  $("#btn-vender").textContent=!S.pay?"Escolha o pagamento":cmd?"Abrir comanda":"Confirmar venda";
+  $("#btn-vender").disabled=!cartItems().length||!S.pay||faltaAc;
+  $("#btn-vender").textContent=faltaAc?"Escolha o acompanhamento":!S.pay?"Escolha o pagamento":cmd?"Abrir comanda":"Confirmar venda";
 }
 $("#acomp-box").addEventListener("click",e=>{const i=e.target.closest("[data-ainc]"),d=e.target.closest("[data-adec]");if(!i&&!d)return;const id=(i||d).dataset.ainc||(i||d).dataset.adec;
   const nP=cartItems().filter(x=>!x.p.semAcomp).reduce((s,x)=>s+x.q,0),tot=Object.values(S.acomp).reduce((a,b)=>a+b,0);
@@ -732,6 +733,8 @@ function retiraPreenchida(){return !!($("#venda-rcli").value.trim()||$("#venda-q
 function resetPedido(){S.cart={};S.acomp={};S.pay=null;S.tipo="balcao";["#venda-cliente","#venda-nome","#venda-tel","#venda-hora","#venda-end","#venda-taxa","#venda-obs","#venda-troco","#venda-dia","#venda-rcli","#venda-quem","#venda-rhora"].forEach(id=>$(id).value="");$("#venda-pago").value="nao";renderCart()}
 $("#btn-vender").addEventListener("click",async()=>{
   if(!need())return;const items=cartItems();if(!items.length||!S.pay)return;
+  {const nP=items.filter(x=>!x.p.semAcomp).reduce((s,x)=>s+x.q,0),tot=Object.values(S.acomp).reduce((a,b)=>a+b,0);
+   if(acomps().length&&nP>0&&tot<nP){toast("Escolha o acompanhamento de todas as peças.");return}}
   const rc=$("#venda-rcli").value.trim(),rq=$("#venda-quem").value.trim(),rh=$("#venda-rhora").value;
   const tipo=S.tipo==="balcao"&&(rc||rq||rh)?"retirada":S.tipo,ret=tipo==="retirada";
   const cid=ret?"":$("#venda-cliente").value,cli=S.clientes.find(c=>c.id===cid);
@@ -741,6 +744,7 @@ $("#btn-vender").addEventListener("click",async()=>{
   const itens=items.map(({p,q})=>({produtoId:p.id,nome:p.nome,un:p.un,qtd:q,preco:p.preco,custo:+custoProd(p).toFixed(4)}));
   const taxaEnt=tipo==="entrega"?+parseNum($("#venda-taxa").value).toFixed(2):0,motoEnt=tipo==="entrega"&&+S.cfg.taxaEnt&&Math.abs(taxaEnt-(+S.cfg.taxaEnt))>0.001?taxaEnt:null;
   const acomp=acomps().filter(a=>S.acomp[a.id]).map(a=>({produtoId:a.id,nome:a.nome,qtd:S.acomp[a.id],custo:+custoBase(a).toFixed(4)}));
+  if(S.acomp._sem)acomp.push({produtoId:"_sem",nome:"Sem acompanhamento",qtd:S.acomp._sem,custo:0});
   const nAc=acomp.reduce((s,a)=>s+a.qtd,0),ajAc=acomp.reduce((s,a)=>s+a.qtd*a.custo,0)-nAc*acompMax();
   const total=+(itens.reduce((s,i)=>s+i.preco*i.qtd,0)+taxaEnt).toFixed(2), custo=+(itens.reduce((s,i)=>s+i.custo*i.qtd,0)+ajAc).toFixed(2);
   let agendado=null;const horaV=ret?rh:$("#venda-hora").value;if(tipo!=="balcao"&&horaV){const [y,m,d]=((ret?"":$("#venda-dia").value)||dayKey(new Date())).split("-").map(Number);const [hh,mm]=horaV.split(":").map(Number);agendado=new Date(y,m-1,d,hh,mm).getTime()}
