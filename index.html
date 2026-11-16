@@ -952,7 +952,7 @@ function desenharComanda(v,so){
     else{caixa(()=>{center("COBRAR "+money(v.total),28,true);center(PAG[v.pagamento]||"",22,true)},false);
       if(v.pagamento==="dinheiro"&&v.troco>v.total){center("Levar troco: "+money(v.troco-v.total),25,true);center("(cliente paga com "+money(v.troco)+")",18,false)}}
     if(via!=="VIA CONFERÊNCIA DO CAIXA"){gap(22);for(let i=W*0.3;i<W*0.7;i+=8*k)x.fillRect(i,y,4*k,2*k);gap(16);
-      x.save();const lh=F(20,false);x.font=`italic ${Math.round(20*k)}px Arial, Helvetica, sans-serif`;
+      x.save();const lh=F(24,true);
       wrap(fraseDoPedido(v),IW-30*k).forEach(l=>{x.fillText(l,(W-x.measureText(l).width)/2,y);y+=lh});x.restore()}
   });
   gap(40);
